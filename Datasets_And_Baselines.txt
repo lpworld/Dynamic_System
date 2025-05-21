@@ -1,0 +1,17 @@
+Link to the Offline Datasets:
+https://file.io/P8U9SWr1kSEb
+
+Link to Baseline Implementations:
+MF: "Surprise" Package
+BSA-MF: https://github.com/wenlong-sun7/Debiasing-the-Human-Recommender-System-Feedback-Loop-in-Collaborative-Filtering
+Prop-MF: https://github.com/yixinwang/causal-recsys-public
+LinUCB/COFIBA "ContextualBandits" Package
+REINFORCE: "RecNN" Package
+PrefRec: https://www.dropbox.com/scl/fo/aspkrxc0kx3gh3lm98fkj/ANekAM7Ud-8OmEGzuOlUmdY?rlkey=r6vnuveaoti8cr3wc4cpdld2g&e=1&dl=0
+RLUR/DRN: Our Own Implementation
+TransRec: https://github.com/YifanZhou95/Translation-based-Recommendation
+SASRec: https://github.com/kang205/SASRec
+DreamRec: https://github.com/YangZhengyi98/DreamRec
+DIN: https://github.com/zhougr1993/DeepInterestNetwork
+DeepFM: "Surprise" Package
+BERT4Rec: https://github.com/FeiSun/BERT4Rec
