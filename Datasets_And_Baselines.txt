@@ -1,7 +1,7 @@
-Link to the Offline Datasets:
-https://limewire.com/d/2WhSj#BIvIpk2Sn5 (Will Expire on 5/28/2025)
+Link to the MovieLens Dataset:
+https://grouplens.org/datasets/movielens/
 
-Link to Baseline Implementations:
+Link to Baseline Model Implementations:
 MF: "Surprise" Package
 BSA-MF: https://github.com/wenlong-sun7/Debiasing-the-Human-Recommender-System-Feedback-Loop-in-Collaborative-Filtering
 Prop-MF: https://github.com/yixinwang/causal-recsys-public
