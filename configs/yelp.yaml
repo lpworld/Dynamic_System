@@ -1,0 +1,20 @@
+dataset: yelp
+data_path: data/yelp.csv
+
+# reproducibility
+seed: 625
+n_folds: 5
+
+# optimization
+hidden_size: 128
+batch_size: 32
+learning_rate: 0.1
+session_length: 10
+epochs: 10
+
+# model
+margin: 0.1
+branch_num: 3
+mdn_components: 4
+mdn_weight: 0.1
+spectral_normalize: true
