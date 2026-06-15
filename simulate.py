@@ -8,11 +8,15 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # Long-term feedback-loop simulation (Section V). User responses are generated
-# under an item-response-theory rating model. This code targets TensorFlow 1.4.
+# under an item-response-theory rating model. With --drift-std > 0 the model is
+# extended to richer dynamics (Supplement III): the per-user trait random-walks
+# and the per-item popularity follows a slow AR(1) drift across feedback loops,
+# so user preferences and item popularity are non-stationary. This code targets
+# TensorFlow 1.4.
 tf.logging.set_verbosity(tf.logging.ERROR)
 
 
-def build_synthetic(num_user, num_item, time_range, seed):
+def build_synthetic(num_user, num_item, time_range, seed, return_traits=False):
     np.random.seed(seed)
     random.seed(seed)
     users, items, ratings = [], [], []
@@ -27,6 +31,12 @@ def build_synthetic(num_user, num_item, time_range, seed):
             items.append(i)
     times = np.random.randint(1, time_range, size=num_user * num_item)
     data = pd.DataFrame({'user_id': users, 'item_id': items, 'click': ratings, 'time': times})
+    if return_traits:
+        # Persistent per-user / per-item traits for the drift extension. Drawn
+        # after the data above so the static (--drift-std 0) run is unchanged.
+        ru_user = np.random.normal(0.5, 1.0, num_user)
+        ri_item = np.random.normal(0.5, 0.5, num_item)
+        return data.sort_values('time'), ru_user, ri_item
     return data.sort_values('time')
 
 
@@ -37,13 +47,19 @@ def main():
     ap.add_argument('--iterations', type=int, default=20)
     ap.add_argument('--time-range', type=int, default=40)
     ap.add_argument('--seed', type=int, default=625)
+    # Drift extension (Supplement III). 0.0 reproduces the original static run;
+    # a modest value (e.g. 0.05) gives drifting prefs + non-stationary popularity.
+    ap.add_argument('--drift-std', type=float, default=0.0,
+                    help='per-loop random-walk std for user traits; '
+                         'item popularity follows AR(1) with the same scale')
     args = ap.parse_args()
 
     batch_size = 20
     hidden_size = 128
     session_length = 10
 
-    data = build_synthetic(args.users, args.items, args.time_range, args.seed)
+    data, ru_user, ri_item = build_synthetic(args.users, args.items, args.time_range,
+                                             args.seed, return_traits=True)
     validate = 4 * len(data) // 5
     train_data = data.iloc[:validate]
     test_data = data.iloc[validate:]
@@ -84,7 +100,17 @@ def main():
             item_emb_table = model.get_item_emb(sess, i_table)
             auc, _ = accuracy(sess, model, train_set, batch_size)
             _, embedding_table = accuracy(sess, model, test_set, batch_size)
-            newtrain_set, new_gini_set = recommendation(embedding_table, item_emb_table)
+            if args.drift_std > 0:
+                # Non-stationary dynamics: random-walk the user traits and let
+                # item popularity drift via AR(1), then label the new feedback
+                # through the drifted item-response model rather than assuming
+                # every recommendation is accepted.
+                ru_user = ru_user + np.random.normal(0, args.drift_std, args.users)
+                ri_item = 0.9 * ri_item + 0.1 * np.random.normal(0.5, 0.5, args.items)
+                newtrain_set, new_gini_set = recommendation(
+                    embedding_table, item_emb_table, ru_user, ri_item)
+            else:
+                newtrain_set, new_gini_set = recommendation(embedding_table, item_emb_table)
             train_set = train_set + newtrain_set
             gini_item_set = gini_item_set + new_gini_set
             gini = compute_gini(gini_item_set)

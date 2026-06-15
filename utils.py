@@ -177,11 +177,21 @@ def accuracy(sess, model, test_set, batch_size):
     return np.mean(correct), embedding_table
 
 
-def recommendation(embedding_table, item_emb_table):
+def recommendation(embedding_table, item_emb_table, ru=None, ri=None):
+    # Generate the next round of feedback from the current recommendations.
+    # By default every recommended item is treated as accepted (label 1.0). When
+    # the drifted traits ru (per user) and ri (per item) are supplied, the label
+    # is instead drawn from the item-response model under the current, non-
+    # stationary preferences and item popularity (the drift extension).
     newtrain_set, new_gini_set = [], []
     tree = scipy.spatial.KDTree(item_emb_table)
     for user, user_embedding in enumerate(embedding_table):
         _, i = tree.query(user_embedding, k=11)
         new_gini_set = new_gini_set + list(i)
-        newtrain_set.append((user, i[9], i[10], list(i[0:10]), list(i[1:11]), 1.0))
+        if ru is not None and ri is not None:
+            r = ru[user % len(ru)] + ri[i[10]] + np.random.normal(0, 0.1)
+            click = float(int(max(min(r, 1.0), 0.0) > 0.5))
+        else:
+            click = 1.0
+        newtrain_set.append((user, i[9], i[10], list(i[0:10]), list(i[1:11]), click))
     return newtrain_set, new_gini_set
