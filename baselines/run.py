@@ -16,6 +16,7 @@ REGISTRY = {
     'sasrec':          ('baselines.sequential', 'SASRec', {}),
     'bert4rec':        ('baselines.sequential', 'BERT4Rec', {}),
     'mamba4rec':       ('baselines.sequential', 'Mamba4Rec', {}),
+    'lrurec':          ('baselines.sequential', 'LRURec', {}),
 
     'linucb':          ('baselines.bandit_rl', 'LinUCB', {}),
     'cofiba':          ('baselines.bandit_rl', 'COFIBA', {}),
@@ -30,6 +31,7 @@ REGISTRY = {
 
     'dreamrec':        ('baselines.generative', 'DreamRec', {}),
     'diffrec':         ('baselines.generative', 'DiffRec', {}),
+    'tiger':           ('baselines.generative', 'TIGER', {}),
     'tallrec':         ('baselines.generative', 'TALLRec', {}),
 }
 

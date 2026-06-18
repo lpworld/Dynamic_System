@@ -178,6 +178,87 @@ class DiffRec(object):
         return sess.run(self.item_emb_w)
 
 
+class TIGER(object):
+    # Recommender Systems with Generative Retrieval (Rajput et al., NeurIPS 2023).
+    # Each item is given a Semantic ID: a tuple of L codewords obtained by residual
+    # quantization (RQ) of its embedding against L learned codebooks. A candidate is
+    # scored by the autoregressive likelihood of generating its Semantic-ID tokens
+    # from the quantized history context, i.e. generative retrieval turned into a
+    # ranking signal so it slots into the shared scoring protocol.
+    def __init__(self, user_count, item_count, hidden_size, batch_size,
+                 codebook_size=64, num_levels=3, commit=0.25, **kwargs):
+        H, K, L = hidden_size, codebook_size, num_levels
+        self.i = tf.placeholder(tf.int32, [batch_size,])
+        self.hist = tf.placeholder(tf.int32, [batch_size, MEMORY_WINDOW])
+        self.label = tf.placeholder(tf.float32, [batch_size,])
+        self.lr = tf.placeholder(tf.float64, [])
+        self.u = tf.placeholder(tf.int32, [batch_size,])
+
+        self.item_emb_w = tf.get_variable('item_emb_w', [item_count, H])
+        codebooks = [tf.get_variable('codebook_%d' % l, [K, H]) for l in range(L)]
+
+        def quantize(emb):
+            # residual quantization -> code indices, straight-through quantized
+            # vectors, and the VQ codebook + commitment loss
+            codes, qvecs, vq = [], [], 0.0
+            residual = emb
+            for l in range(L):
+                r_sq = tf.expand_dims(tf.reduce_sum(residual * residual, axis=1), 1)
+                cross = tf.matmul(residual, codebooks[l], transpose_b=True)
+                cb_sq = tf.reduce_sum(codebooks[l] * codebooks[l], axis=1)
+                dist = r_sq - 2.0 * cross + cb_sq                  # [*, K]
+                idx = tf.argmin(dist, axis=1, output_type=tf.int32)
+                q = tf.nn.embedding_lookup(codebooks[l], idx)
+                vq += tf.reduce_mean(tf.square(tf.stop_gradient(residual) - q)) \
+                    + commit * tf.reduce_mean(tf.square(residual - tf.stop_gradient(q)))
+                qvecs.append(residual + tf.stop_gradient(q - residual))  # straight-through
+                codes.append(idx)
+                residual = residual - q
+            return codes, qvecs, vq
+
+        # history -> quantized reconstruction -> mean-pooled context
+        flat = tf.reshape(self.hist, [-1])
+        h_emb = tf.nn.embedding_lookup(self.item_emb_w, flat)
+        _, h_q, _ = quantize(h_emb)
+        h_recon = tf.reshape(tf.add_n(h_q), [batch_size, MEMORY_WINDOW, H])
+        context = tf.layers.dense(tf.reduce_mean(h_recon, axis=1), H,
+                                  activation=tf.nn.tanh, name='ctx')
+
+        # candidate Semantic ID, scored autoregressively over the L levels
+        cand_emb = tf.nn.embedding_lookup(self.item_emb_w, self.i)
+        cand_codes, cand_q, cand_vq = quantize(cand_emb)
+        logp = tf.zeros([batch_size])
+        prev = tf.zeros([batch_size, H])
+        for l in range(L):
+            state = tf.layers.dense(tf.concat([context, prev], axis=1), H,
+                                    activation=tf.nn.relu, name='dec%d' % l)
+            logits = tf.matmul(state, codebooks[l], transpose_b=True)   # [B, K]
+            logp += tf.reduce_sum(tf.nn.log_softmax(logits) *
+                                  tf.one_hot(cand_codes[l], K), axis=1)
+            prev = prev + cand_q[l]                                     # teacher forcing
+
+        # maximize the generative log-likelihood of the clicked next item
+        nll = -tf.reduce_sum(logp * self.label) / (tf.reduce_sum(self.label) + 1e-8)
+        self.loss = nll + cand_vq
+        self.train_op = tf.train.AdamOptimizer(self.lr).minimize(self.loss)
+        self.score = logp   # higher generative likelihood = more relevant
+
+    def train(self, sess, uij, lr):
+        loss, _ = sess.run([self.loss, self.train_op], feed_dict={
+                self.u: uij[0], self.i: uij[1], self.hist: uij[3],
+                self.label: uij[5], self.lr: lr})
+        return loss
+
+    def test(self, sess, uij):
+        score = sess.run(self.score, feed_dict={
+                self.u: uij[0], self.i: uij[1], self.hist: uij[3],
+                self.label: uij[5]})
+        return list(uij[5]), list(score), list(uij[0]), list(uij[1])
+
+    def item_embeddings(self, sess):
+        return sess.run(self.item_emb_w)
+
+
 # TALLRec runs outside the TF pipeline: it wraps a pretrained causal LM through
 # HuggingFace transformers and ignores the TF session. Requires transformers.
 try:

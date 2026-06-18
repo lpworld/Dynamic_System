@@ -222,3 +222,83 @@ class Mamba4Rec(object):
 
     def item_embeddings(self, sess):
         return sess.run(self.item_emb_w)
+
+
+def lru_block(seq, hidden_size, batch_size, name):
+    # Linear Recurrent Unit (Orvieto et al., ICML 2023; Yue et al., LRURec, WSDM
+    # 2024). A diagonal *complex* linear recurrence h_t = lambda * h_{t-1} + B x_t
+    # with lambda = exp(-exp(nu) + i*theta), so |lambda| = exp(-exp(nu)) in (0, 1)
+    # guarantees stability and theta supplies rotation. Crucially lambda does NOT
+    # depend on the input (no selective gating), which is what keeps the recurrence
+    # linear and parallelizable -- the key difference from Mamba4Rec above.
+    T = seq.shape.as_list()[1]
+    with tf.variable_scope(name):
+        nu = tf.get_variable('nu', [hidden_size],
+                             initializer=tf.random_uniform_initializer(-4.0, -1.0))
+        theta = tf.get_variable('theta', [hidden_size],
+                                initializer=tf.random_uniform_initializer(0.0, 0.3))
+        mag = tf.exp(-tf.exp(nu))                  # stable magnitude in (0, 1)
+        lam_re, lam_im = mag * tf.cos(theta), mag * tf.sin(theta)
+        gamma = tf.sqrt(1.0 - mag * mag + 1e-8)    # normalized input injection (LRU)
+
+        bx_re = tf.layers.dense(seq, hidden_size, name='B_re')  # [B, T, H]
+        bx_im = tf.layers.dense(seq, hidden_size, name='B_im')
+        h_re = tf.zeros([batch_size, hidden_size])
+        h_im = tf.zeros([batch_size, hidden_size])
+        outs = []
+        for t in range(T):
+            xr, xi = bx_re[:, t, :] * gamma, bx_im[:, t, :] * gamma
+            h_re, h_im = (lam_re * h_re - lam_im * h_im + xr,
+                          lam_re * h_im + lam_im * h_re + xi)
+            # real part of the output projection C h_t
+            y = (tf.layers.dense(h_re, hidden_size, name='C_re', reuse=tf.AUTO_REUSE)
+                 - tf.layers.dense(h_im, hidden_size, name='C_im', use_bias=False,
+                                   reuse=tf.AUTO_REUSE))
+            outs.append(y)
+        y_seq = tf.stack(outs, axis=1)             # [B, T, H]
+
+        # gated feedforward, residual and normalization
+        glu = tf.layers.dense(y_seq, hidden_size, name='glu_v') * \
+            tf.sigmoid(tf.layers.dense(y_seq, hidden_size, name='glu_g'))
+        out = layer_norm(seq + glu, 'ln')
+    return out
+
+
+class LRURec(object):
+    def __init__(self, user_count, item_count, hidden_size, batch_size,
+                 num_blocks=2, **kwargs):
+        self.i = tf.placeholder(tf.int32, [batch_size,])
+        self.hist = tf.placeholder(tf.int32, [batch_size, MEMORY_WINDOW])
+        self.label = tf.placeholder(tf.float32, [batch_size,])
+        self.lr = tf.placeholder(tf.float64, [])
+        self.u = tf.placeholder(tf.int32, [batch_size,])
+
+        self.item_emb_w = tf.get_variable('item_emb_w', [item_count, hidden_size])
+        h_emb = tf.nn.embedding_lookup(self.item_emb_w, self.hist)
+        cand_emb = tf.nn.embedding_lookup(self.item_emb_w, self.i)
+
+        seq = h_emb
+        for b in range(num_blocks):
+            seq = lru_block(seq, hidden_size, batch_size, 'lru%d' % b)
+        rep = seq[:, -1, :]  # state after consuming the whole history
+
+        logit = tf.reduce_sum(rep * cand_emb, axis=1)
+        self.score = tf.sigmoid(logit)
+        self.loss = tf.reduce_mean(
+            tf.nn.sigmoid_cross_entropy_with_logits(labels=self.label, logits=logit))
+        self.train_op = tf.train.AdamOptimizer(self.lr).minimize(self.loss)
+
+    def train(self, sess, uij, lr):
+        loss, _ = sess.run([self.loss, self.train_op], feed_dict={
+                self.u: uij[0], self.i: uij[1], self.hist: uij[3],
+                self.label: uij[5], self.lr: lr})
+        return loss
+
+    def test(self, sess, uij):
+        score = sess.run(self.score, feed_dict={
+                self.u: uij[0], self.i: uij[1], self.hist: uij[3],
+                self.label: uij[5]})
+        return list(uij[5]), list(score), list(uij[0]), list(uij[1])
+
+    def item_embeddings(self, sess):
+        return sess.run(self.item_emb_w)

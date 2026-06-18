@@ -77,15 +77,27 @@ python -m baselines.run --model sasrec --config configs/yelp.yaml
 | Group | Models |
 | --- | --- |
 | Factorization / CTR | `mf`, `bsa_mf`, `prop_mf`, `deepfm`, `din` |
-| Sequential | `transrec`, `sasrec`, `bert4rec`, `mamba4rec` |
+| Sequential | `transrec`, `sasrec`, `bert4rec`, `mamba4rec`, `lrurec` |
 | Bandits / RL | `linucb`, `cofiba`, `reinforce`, `drn`, `rlur` |
 | Exploration | `prefrec`, `deep_exploration`, `hac`, `resact` |
-| Generative / LLM | `dreamrec`, `diffrec`, `tallrec` |
+| Generative / Retrieval / LLM | `dreamrec`, `diffrec`, `tiger`, `tallrec` |
 
 Every model scores and ranks the same labeled candidate set without negative
 sampling and reports the same six metrics as FDSR. `tallrec` runs outside the
 TensorFlow pipeline and requires `pip install torch transformers` and a base model
 (`base_model='gpt2'` by default).
+
+Two recent efficiency- and retrieval-oriented baselines are included:
+
+- `lrurec` (Yue et al., *Linear Recurrent Units for Sequential Recommendation*,
+  WSDM 2024): an efficient, transformer-free sequential recommender that replaces
+  self-attention with a data-independent diagonal complex linear recurrence under a
+  stable exponential parameterization (distinct from the input-dependent selective
+  recurrence of `mamba4rec`).
+- `tiger` (Rajput et al., *Recommender Systems with Generative Retrieval*,
+  NeurIPS 2023): a generative-retrieval recommender that assigns each item a
+  Semantic ID via residual quantization and ranks a candidate by the autoregressive
+  likelihood of generating its Semantic-ID tokens from the quantized history.
 
 ## Simulation
 
