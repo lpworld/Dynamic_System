@@ -31,6 +31,7 @@ REGISTRY = {
 
     'dreamrec':        ('baselines.generative', 'DreamRec', {}),
     'diffrec':         ('baselines.generative', 'DiffRec', {}),
+    'preferdiff':      ('baselines.generative', 'PreferDiff', {}),
     'tiger':           ('baselines.generative', 'TIGER', {}),
     'tallrec':         ('baselines.generative', 'TALLRec', {}),
 }

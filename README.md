@@ -80,15 +80,20 @@ python -m baselines.run --model sasrec --config configs/yelp.yaml
 | Sequential | `transrec`, `sasrec`, `bert4rec`, `mamba4rec`, `lrurec` |
 | Bandits / RL | `linucb`, `cofiba`, `reinforce`, `drn`, `rlur` |
 | Exploration | `prefrec`, `deep_exploration`, `hac`, `resact` |
-| Generative / Retrieval / LLM | `dreamrec`, `diffrec`, `tiger`, `tallrec` |
+| Generative / Retrieval / LLM | `dreamrec`, `diffrec`, `preferdiff`, `tiger`, `tallrec` |
 
 Every model scores and ranks the same labeled candidate set without negative
 sampling and reports the same six metrics as FDSR. `tallrec` runs outside the
 TensorFlow pipeline and requires `pip install torch transformers` and a base model
 (`base_model='gpt2'` by default).
 
-Two recent efficiency- and retrieval-oriented baselines are included:
+Three recent diffusion-, efficiency- and retrieval-oriented baselines are included:
 
+- `preferdiff` (Liu et al., *Preference Diffusion for Recommendation*, ICLR 2025):
+  a diffusion recommender trained with a BPR-style ranking objective rather than the
+  usual denoising MSE. The denoiser predicts the clean target-item embedding
+  (x0-parameterization) and is optimized so the predicted target lies closer to the
+  clicked item than to the in-batch negatives (integrated through their centroid).
 - `lrurec` (Yue et al., *Linear Recurrent Units for Sequential Recommendation*,
   WSDM 2024): an efficient, transformer-free sequential recommender that replaces
   self-attention with a data-independent diagonal complex linear recurrence under a
